@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Globalization;
 
 namespace Calculator
 {
@@ -15,13 +16,21 @@ namespace Calculator
         public FunctionCollection Functions =
             new FunctionCollection();
 
+        private static int sign;
+        private static bool wasOpenBrc;
+
+        private static NumberStyles numberStyles =
+            NumberStyles.AllowDecimalPoint;
+        private static IFormatProvider provider =
+            new NumberFormatInfo { NumberDecimalSeparator = "." };
+
+
         public double Calculate(string expr)
         {
-            string exp = "";
-            foreach (char c in expr)
-                if (char.IsLetterOrDigit(c) || ".,+-*/^%()".IndexOf(c) != -1)
-                    exp += c;
-            CalcEnvironment env = new CalcEnvironment(exp);
+            CalcEnvironment env = new CalcEnvironment(expr.Length);
+            for (int i = expr.Length - 1; i >= 0; --i)
+                if (char.IsLetterOrDigit(expr[i]) || ".,+-*/^%()".IndexOf(expr[i]) != -1)
+                    env.exprStack.Push(expr[i]);
             Calc_Parse(env);
             if (env.nodes.Count == 0)
                 throw new CalculatorException("Not a valid string");
@@ -73,7 +82,7 @@ namespace Calculator
             }
         }
 
-        private void PrintInfo(CalcEnvironment env)
+        private static void PrintInfo(CalcEnvironment env)
         {
             LinkedListNode<Node> node = env.nodes.First;
             while (node != null)
@@ -89,28 +98,32 @@ namespace Calculator
             Console.WriteLine("Count: " + env.opQueue.Count);
         }
 
-        private void Calc_Parse(CalcEnvironment env)
+        private static void Calc_Parse(CalcEnvironment env)
         {
-            var parseOp = false;
+            var parseStage = 0;
             var firstValue = true;
-            while (env.i < env.Length)
+            while (env.Length != 0)
             {
-                if (parseOp)
-                    ParseOperation(env);
-                else
-                    ParseValue(env, ref firstValue);
-                parseOp = !parseOp;
+                switch (parseStage)
+                {
+                    case 0: ParseOpenBrackets(env, ref firstValue); break;
+                    case 1: ParseValue(env); break;
+                    case 2: ParseCloseBrackets(env); break;
+                    case 3: ParseOperation(env); break;
+                }
+                if (++parseStage == 4)
+                    parseStage = 0;
             }
             if (env.brc != 0)
-                throw new ParseException(env.i, env.Char, "Missing closing bracket");
+                throw new ParseException(env.i, "Missing closing bracket");
         }
 
-        private void ParseOperation(CalcEnvironment env)
+        private static void ParseOperation(CalcEnvironment env)
         {
             LinkedListNode<Node> op;
             if ("^%*/+-".Contains(env.Char))
             {
-                op = env.nodes.AddLast(new OperationNode(env.Char, env.brc)) as LinkedListNode<Node>;
+                op = env.nodes.AddLast(new OperationNode(env.Char, env.brc));
                 env.AddOpInQueue(op);
             }
             else
@@ -118,12 +131,12 @@ namespace Calculator
             env.NextChar();
         }
 
-        private void ParseValue(CalcEnvironment env, ref bool firstValue)
+        private static void ParseOpenBrackets(CalcEnvironment env, ref bool firstValue)
         {
             char c;
-            var wasOpenBrc = false;
-            var sign = 1;
-            while (env.i < env.Length)
+            wasOpenBrc = false;
+            sign = 1;
+            do
             {
                 c = env.Char;
                 if (c == '(')
@@ -137,19 +150,29 @@ namespace Calculator
                     {
                         sign *= -1;
                         wasOpenBrc = false;
+                        firstValue = false;
                     }
                     else
                         throw new ParseException(env.i, "Bad minus");
                 }
                 else
-                    break ;
-               env.NextChar();
-            }
+                    break;
+                env.NextChar();
+            } while (env.Length != 0);
+        }
+
+        private static void ParseValue(CalcEnvironment env)
+        {
             if (char.IsDigit(env.Char))
                 ParseNumber(env, sign);
             else if (char.IsLetter(env.Char) || env.Char == '_')
                 ParseConstOrFunc(env, sign);
-            while (env.i < env.Length)
+        }
+
+        private static void ParseCloseBrackets(CalcEnvironment env)
+        {
+            char c;
+            while (env.Length != 0)
             {
                 c = env.Char;
                 if (c == ')')
@@ -158,18 +181,18 @@ namespace Calculator
                     env.NextChar();
                 }
                 else
-                    break ;
+                    break;
             }
-            firstValue = false;
         }
 
-        private void ParseNumber(CalcEnvironment env, int sign)
+        private static void ParseNumber(CalcEnvironment env, int sign)
         {
             var wasDigit = false;
             var wasDot = false;
             string str = "";
+            double numb = 0.0;
             char c;
-            while (env.i < env.Length)
+            do
             {
                 c = env.Char;
                 if (c == '.')
@@ -190,20 +213,20 @@ namespace Calculator
                 else
                     break;
                 env.NextChar();
-            }
-            double numb;
-            if (!double.TryParse(str, out numb))
+            } while (env.Length != 0);
+            
+            if (!double.TryParse(str, numberStyles, provider, out numb))
                 throw new ParseException(env.i, $"Bad number '{str}'");
             env.nodes.AddLast(new NumberNode(numb * sign));
         }
 
-        private void ParseConstOrFunc(CalcEnvironment env, int sign)
+        private static void ParseConstOrFunc(CalcEnvironment env, int sign)
         {
             bool isFunc = false;
             List<string> args = null;
             string str = "";
             char c;
-            while (env.i < env.Length)
+            do
             {
                 c = env.Char;
                 if (char.IsLetter(c) || c == '_')
@@ -212,25 +235,25 @@ namespace Calculator
                 {
                     isFunc = true;
                     args = ParseFuncArgs(env);
-                    break ;
+                    break;
                 }
                 else
-                    break ;
+                    break;
                 env.NextChar();
-            }
+            } while (env.Length != 0);
             if (isFunc)
                 env.nodes.AddLast(new FuncNode(str, args.ToArray(), sign));
             else
                 env.nodes.AddLast(new ConstNode(str, sign));
         }
 
-        private List<string> ParseFuncArgs(CalcEnvironment env)
+        private static List<string> ParseFuncArgs(CalcEnvironment env)
         {
             List<string> args = new List<string>();
             int brc = 0;
             string arg = "";
             char c;
-            while (env.i < env.Length)
+            while (env.Length != 0)
             {
                 env.NextChar();
                 c = env.Char;
@@ -242,12 +265,10 @@ namespace Calculator
                         env.NextChar();
                         break ;
                     }
-                    arg += ')';
                 }
                 else if (c == '(')
                 {
                     ++brc;
-                    arg += '(';
                 }
                 else if (c == ',')
                 {
@@ -259,16 +280,13 @@ namespace Calculator
                     else
                         throw new ParseException(env.i, "Empty argument");
                 }
-                else
+                if (c != ',')
                     arg += c;
             }
             if (brc != -1)
                 throw new ParseException(env.i, env.Char, "Missing function closing bracket");
             if (arg != "")
-            {
                 args.Add(arg);
-                arg = "";
-            }
             else if (args.Count > 0)
                 throw new ParseException(env.i, "Empty argument");
             return (args);
@@ -304,11 +322,6 @@ namespace Calculator
                 env.nodes.Remove(env.opQueue[i]);
             }
             return ((NumberNode)env.nodes.First.Value).number;
-        }
-
-        private string CasedString(string str)
-        {
-            return (IgnoreCase ? str.ToLower() : str);
         }
     }
 }

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 
 using static System.Console;
+
 namespace Calculator
 {
     class Program
@@ -49,7 +50,7 @@ namespace Calculator
                 SwitchCaseIgnore();
             else if (lowered == "math")
                 SwitchStandartMath();
-            else if (lowered == "dzero")
+            else if (lowered == "zero")
                 SwitchDivisionByZero();
             else if (lowered == "clear")
                 ConstClear();
@@ -145,7 +146,7 @@ namespace Calculator
 
         static void Help()
         {
-            WriteLine("Palladium Calculator 1.0");
+            WriteLine("Palladium Calculator 1.1");
             WriteLine("Write 'constName = value' to add const");
             WriteLine("Write '=expression' to calculate it");
             WriteLine("Write 'math' to switch 'defaultMath' mode");

@@ -8,17 +8,20 @@ namespace Calculator
 {
     class CalcEnvironment
     {
-        public string expr;
+        
         public int i;
         public int brc;
+
+        public Stack<char> exprStack;
         public LinkedList<Node> nodes;
         public List<LinkedListNode<Node>> opQueue;
 
-        public CalcEnvironment(string expr)
+
+        public CalcEnvironment(int capacity)
         {
-            this.expr = expr;
             i = 0;
             brc = 0;
+            exprStack = new Stack<char>(capacity);
             nodes = new LinkedList<Node>();
             opQueue = new List<LinkedListNode<Node>>();
         }
@@ -33,8 +36,8 @@ namespace Calculator
             opQueue.Insert(i, node);
         }
 
-        public char Char => expr[i];
-        public int Length => expr.Length;
-        public void NextChar() => ++i;
+        public char Char => exprStack.Peek();
+        public int Length => exprStack.Count;
+        public void NextChar() => exprStack.Pop();
     }
 }
